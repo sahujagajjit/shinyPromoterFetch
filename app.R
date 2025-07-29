@@ -7,7 +7,14 @@ library(BSgenome.Athaliana.TAIR.TAIR9)
 library(TxDb.Athaliana.BioMart.plantsmart28)
 
 # === Load Arabidopsis gene ranges from RDS once ===
-rdsPath <- file.path(dirname(rstudioapi::getActiveDocumentContext()$path), "athalianaGeneRanges.rds")
+if (requireNamespace("rstudioapi", quietly = TRUE) &&
+    rstudioapi::isAvailable() &&
+    !is.null(rstudioapi::getActiveDocumentContext()$path)) {
+  rdsPath <- file.path(dirname(rstudioapi::getActiveDocumentContext()$path), "athalianaGeneRanges.rds")
+} else {
+  rdsPath <- "athalianaGeneRanges.rds"
+}
+
 if (!file.exists(rdsPath)) {
   txdb <- TxDb.Athaliana.BioMart.plantsmart28
   genes <- genes(txdb)
