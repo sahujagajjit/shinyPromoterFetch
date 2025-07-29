@@ -1,3 +1,33 @@
+# Define CRAN and Bioconductor packages
+cranPackages <- c("shiny", "DT")
+biocPackages <- c(
+  "Biostrings", "GenomicRanges", "BSgenome", 
+  "BSgenome.Athaliana.TAIR.TAIR9", "BSgenome.Osativa.MSU.MSU7", 
+  "TxDb.Athaliana.BioMart.plantsmart28", "biomaRt"
+)
+
+# Install CRAN packages if not present
+installIfMissing <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+}
+
+# Install Bioconductor packages if not present
+installBiocIfMissing <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+      install.packages("BiocManager")
+    }
+    BiocManager::install(pkg, update = FALSE, ask = FALSE)
+  }
+}
+
+# Apply installation
+invisible(lapply(cranPackages, installIfMissing))
+invisible(lapply(biocPackages, installBiocIfMissing))
+
+# Load all packages
 library(shiny)
 library(DT)
 library(Biostrings)
@@ -7,6 +37,7 @@ library(BSgenome.Athaliana.TAIR.TAIR9)
 library(BSgenome.Osativa.MSU.MSU7)
 library(TxDb.Athaliana.BioMart.plantsmart28)
 library(biomaRt)
+
 
 # === Arabidopsis gene ranges ===
 ensembl_ath <- useMart("plants_mart", dataset = "athaliana_eg_gene", host = "https://plants.ensembl.org")
