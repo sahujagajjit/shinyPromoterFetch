@@ -8,14 +8,26 @@ library(TxDb.Athaliana.BioMart.plantsmart28)
 
 # === Load Arabidopsis gene ranges from RDS once ===
 # rdsPath <- file.path(dirname(rstudioapi::getActiveDocumentContext()$path), "athalianaGeneRanges.rds")
-rdsPath <- "athalianaGeneRanges.rds"
-if (!file.exists(rdsPath)) {
+# if (!file.exists(rdsPath)) {
+#   txdb <- TxDb.Athaliana.BioMart.plantsmart28
+#   genes <- genes(txdb)
+#   genes$gene_id <- names(genes)
+#   saveRDS(genes, rdsPath)
+# }
+# athalianaGenes <- readRDS(rdsPath)
+if (file.exists("athalianaGenes.rds")) {
+  athalianaGenes <- readRDS("athalianaGenes.rds")
+} else if (interactive()) {
+  message("athalianaGenes.rds not found. Generating from TxDb...")
   txdb <- TxDb.Athaliana.BioMart.plantsmart28
   genes <- genes(txdb)
   genes$gene_id <- names(genes)
-  saveRDS(genes, rdsPath)
+  saveRDS(genes, "athalianaGenes.rds")
+  athalianaGenes <- genes
+} else {
+  stop("athalianaGenes.rds not found and cannot generate in non-interactive mode.")
 }
-athalianaGenes <- readRDS(rdsPath)
+
 athalianaGenome <- BSgenome.Athaliana.TAIR.TAIR9
 
 # === Define UI ===
