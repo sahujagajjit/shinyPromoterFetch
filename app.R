@@ -36,8 +36,10 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       selectInput("organism", "Choose Organism:", choices = c("Arabidopsis thaliana", "Cicer arietinum")),
-      numericInput("promoterLength", "Upstream Length:", value = 1000, min = 100, max = 3000, step = 100),
-      actionButton("submit", "Submit")
+      numericInput("promoterLength", "Upstream Length (bp):", value = 1000, min = 100, max = 3000, step = 100),
+      numericInput("downstreamLength", "Downstream Length (bp):", value = 0, min = 0, max = 3000, step = 100),  # 👈 New field
+      actionButton("submit", "Submit"),
+      uiOutput("geneSelector")
     ),
     mainPanel(
       textOutput("statusText"),
@@ -90,6 +92,7 @@ server <- function(input, output, session) {
   # Function to extract promoter sequences
   getArabidopsisPromoters <- function(gr,
                                       upstream = 1000,
+                                      downstream = 0,
                                       genome = BSgenome.Athaliana.TAIR.TAIR9,
                                       namesPromoterSeqs = TRUE,
                                       outputFasta = NULL) {
@@ -97,7 +100,7 @@ server <- function(input, output, session) {
     seqlevels(gr) <- paste0("Chr", seqlevels(gr))  # Prefix "Chr" if not already
     
     # Step 2: Define TSS based on strand and build promoter ranges
-    promoterRanges <- promoters(gr, upstream = upstream, downstream = 0)
+    promoterRanges <- promoters(gr, upstream = upstream, downstream = downstream)
     
     # Step 3: Adjust unusual chromosome naming if needed
     seqlevels(promoterRanges) <- sub("ChrPt", "ChrC", seqlevels(promoterRanges))
@@ -120,7 +123,8 @@ server <- function(input, output, session) {
         promoterRanges$gene_id, "|",
         seqnames(promoterRanges), ":",
         strand(promoterRanges), "|",
-        start(promoterRanges), "_", end(promoterRanges)
+        "Range:", start(promoterRanges), "_", end(promoterRanges),
+        "|U:", input$promoterLength, "bp|D:", input$downstreamLength, "bp"
       )
     } else {
       names(promoterSeqs) <- promoterRanges$gene_id
@@ -161,6 +165,7 @@ server <- function(input, output, session) {
       seqs <- getArabidopsisPromoters(
         gr = geneGR,
         upstream = input$promoterLength,
+        downstream = input$downstreamLength,
         genome = athalianaGenome
       )
       
