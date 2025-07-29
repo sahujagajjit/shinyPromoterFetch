@@ -37,14 +37,14 @@ ui <- fluidPage(
     sidebarPanel(
       selectInput("organism", "Choose Organism:", choices = c("Arabidopsis thaliana", "Cicer arietinum")),
       numericInput("promoterLength", "Upstream Length:", value = 1000, min = 100, max = 3000, step = 100),
-      actionButton("submit", "Submit"),
-      br(),
-      downloadButton("downloadBtn", "Download Promoter FASTA")
+      actionButton("submit", "Submit")
     ),
     mainPanel(
       textOutput("statusText"),
       actionButton("selectIds", "Select from IDs"),
-      DTOutput("geneTable")
+      DTOutput("geneTable"),
+      br(),
+      uiOutput("downloadUI") 
     )
   )
 )
@@ -137,33 +137,44 @@ server <- function(input, output, session) {
   
   # When Submit is clicked
   observeEvent(input$submit, {
+    output$downloadUI <- renderUI(NULL)  # Disable download button initially
+    
     if (input$organism == "Cicer arietinum") {
       sequenceData(NULL)
       showNotification("Promoter data for Cicer arietinum is not available.", type = "warning")
       return()
     }
     
-    # Start with all genes
-    geneGR <- athalianaGenes
-    
-    # If user selected specific genes
-    if (processed()) {
-      sel <- input$geneTable_rows_selected
-      if (!is.null(sel) && length(sel) > 0) {
-        ids <- selectedData()$GeneID[sel]
-        geneGR <- athalianaGenes[athalianaGenes$gene_id %in% ids]
+    withProgress(message = "Extracting promoters...", value = 0, {
+      incProgress(0.2, detail = "Preparing gene ranges...")
+      geneGR <- athalianaGenes
+      
+      if (processed()) {
+        sel <- input$geneTable_rows_selected
+        if (!is.null(sel) && length(sel) > 0) {
+          ids <- selectedData()$GeneID[sel]
+          geneGR <- athalianaGenes[athalianaGenes$gene_id %in% ids]
+        }
       }
-    }
+      
+      incProgress(0.5, detail = "Fetching sequences...")
+      seqs <- getArabidopsisPromoters(
+        gr = geneGR,
+        upstream = input$promoterLength,
+        genome = athalianaGenome
+      )
+      
+      incProgress(0.3, detail = "Done.")
+      sequenceData(seqs)
+    })
     
-    # Extract promoters
-    seqs <- getArabidopsisPromoters(
-      gr = geneGR,
-      upstream = input$promoterLength,
-      genome = athalianaGenome
-    )
-    
-    sequenceData(seqs)
+    # ✅ Show download button when ready
+    output$downloadUI <- renderUI({
+      req(sequenceData())
+      downloadButton("downloadBtn", "Download Promoter FASTA")
+    })
   })
+  
   
   # Download handler
   output$downloadBtn <- downloadHandler(
