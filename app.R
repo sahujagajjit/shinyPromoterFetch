@@ -4,36 +4,44 @@ library(Biostrings)
 library(GenomicRanges)
 library(BSgenome)
 library(BSgenome.Athaliana.TAIR.TAIR9)
+library(BSgenome.Osativa.MSU.MSU7)
 library(TxDb.Athaliana.BioMart.plantsmart28)
 library(biomaRt)
 
-# === Generate Arabidopsis gene ranges directly using biomaRt ===
-ensembl <- useMart("plants_mart", 
-                   dataset = "athaliana_eg_gene", 
-                   host = "https://plants.ensembl.org")
-
-genesBM <- getBM(
-  attributes = c("ensembl_gene_id", "chromosome_name", 
-                 "start_position", "end_position", "strand"),
-  mart = ensembl
+# === Arabidopsis gene ranges ===
+ensembl_ath <- useMart("plants_mart", dataset = "athaliana_eg_gene", host = "https://plants.ensembl.org")
+genesBM_ath <- getBM(
+  attributes = c("ensembl_gene_id", "chromosome_name", "start_position", "end_position", "strand"),
+  mart = ensembl_ath
 )
-
 athalianaGenes <- GRanges(
-  seqnames = genesBM$chromosome_name,
-  ranges = IRanges(start = genesBM$start_position,
-                   end = genesBM$end_position),
-  strand = ifelse(genesBM$strand == 1, "+", "-"),
-  gene_id = genesBM$ensembl_gene_id
+  seqnames = genesBM_ath$chromosome_name,
+  ranges = IRanges(start = genesBM_ath$start_position, end = genesBM_ath$end_position),
+  strand = ifelse(genesBM_ath$strand == 1, "+", "-"),
+  gene_id = genesBM_ath$ensembl_gene_id
 )
-
 athalianaGenome <- BSgenome.Athaliana.TAIR.TAIR9
 
-# === Define UI ===
+# === Oryza sativa gene ranges ===
+ensembl_os <- useMart("plants_mart", dataset = "osativa_eg_gene", host = "https://plants.ensembl.org")
+genesBM_os <- getBM(
+  attributes = c("ensembl_gene_id", "chromosome_name", "start_position", "end_position", "strand"),
+  mart = ensembl_os
+)
+osativaGenes <- GRanges(
+  seqnames = genesBM_os$chromosome_name,
+  ranges = IRanges(start = genesBM_os$start_position, end = genesBM_os$end_position),
+  strand = ifelse(genesBM_os$strand == 1, "+", "-"),
+  gene_id = genesBM_os$ensembl_gene_id
+)
+osativaGenome <- BSgenome.Osativa.MSU.MSU7
+
+# === UI ===
 ui <- fluidPage(
   titlePanel("shinyPromoterFetch"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("organism", "Choose Organism:", choices = c("Arabidopsis thaliana", "Cicer arietinum")),
+      selectInput("organism", "Choose Organism:", choices = c("Arabidopsis thaliana", "Oryza sativa", "Cicer arietinum")),
       numericInput("promoterLength", "Upstream Length (bp):", value = 1000, min = 100, max = 3000, step = 100),
       numericInput("downstreamLength", "Downstream Length (bp):", value = 0, min = 0, max = 3000, step = 100),
       actionButton("submit", "Submit"),
@@ -55,24 +63,50 @@ server <- function(input, output, session) {
   processed <- reactiveVal(FALSE)
   sequenceData <- reactiveVal(NULL)
   
-  output$statusText <- renderText({
+  # Dynamic gene ranges
+  getSelectedGenes <- reactive({
     if (input$organism == "Arabidopsis thaliana") {
-      paste("Total number of genes:", length(athalianaGenes))
+      athalianaGenes
+    } else if (input$organism == "Oryza sativa") {
+      osativaGenes
     } else {
-      "Data for Cicer arietinum is not available yet."
+      NULL
     }
   })
   
+  # Dynamic genome
+  getSelectedGenome <- reactive({
+    if (input$organism == "Arabidopsis thaliana") {
+      athalianaGenome
+    } else if (input$organism == "Oryza sativa") {
+      osativaGenome
+    } else {
+      NULL
+    }
+  })
+  
+  # Status text
+  output$statusText <- renderText({
+    genes <- getSelectedGenes()
+    if (is.null(genes)) {
+      "Data for Cicer arietinum is not available yet."
+    } else {
+      paste("Total number of genes:", length(genes))
+    }
+  })
+  
+  # Gene table
   observeEvent(input$selectIds, {
-    req(input$organism == "Arabidopsis thaliana")
+    genes <- getSelectedGenes()
+    req(!is.null(genes))
     geneDF <- data.frame(
-      GeneID = athalianaGenes$gene_id,
+      GeneID = genes$gene_id,
       GeneName = NA,
-      Chromosome = as.character(seqnames(athalianaGenes)),
-      Start = start(athalianaGenes),
-      End = end(athalianaGenes),
-      Strand = as.character(strand(athalianaGenes)),
-      Length = width(athalianaGenes)
+      Chromosome = as.character(seqnames(genes)),
+      Start = start(genes),
+      End = end(genes),
+      Strand = as.character(strand(genes)),
+      Length = width(genes)
     )
     selectedData(geneDF)
     processed(TRUE)
@@ -83,34 +117,41 @@ server <- function(input, output, session) {
     datatable(selectedData(), selection = 'multiple', options = list(scrollX = TRUE))
   })
   
-  getArabidopsisPromoters <- function(gr, upstream = 1000, downstream = 0,
-                                      genome = BSgenome.Athaliana.TAIR.TAIR9,
-                                      namesPromoterSeqs = TRUE) {
-    seqlevels(gr) <- paste0("Chr", seqlevels(gr))
+  # General promoter function
+  getPromoters <- function(gr, upstream, downstream, genome, organism) {
+    if (organism == "Arabidopsis thaliana") {
+      seqlevels(gr) <- paste0("Chr", seqlevels(gr))
+      seqlevels(gr) <- sub("ChrPt", "ChrC", seqlevels(gr))
+      seqlevels(gr) <- sub("ChrMt", "ChrM", seqlevels(gr))
+    } else if (organism == "Oryza sativa") {
+      # Adjust chromosome names for Oryza to match BSgenome
+      seqlevels(gr) <- paste0("Chr", seqlevels(gr))
+    }
+    
     promoterRanges <- promoters(gr, upstream = upstream, downstream = downstream)
-    seqlevels(promoterRanges) <- sub("ChrPt", "ChrC", seqlevels(promoterRanges))
-    seqlevels(promoterRanges) <- sub("ChrMt", "ChrM", seqlevels(promoterRanges))
     commonSeqs <- intersect(seqlevels(promoterRanges), seqlevels(genome))
     promoterRanges <- keepSeqlevels(promoterRanges, commonSeqs, pruning.mode = "coarse")
+    
+    if (length(promoterRanges) == 0) return(DNAStringSet())
+    
     seqlengths(promoterRanges) <- seqlengths(genome)[seqlevels(promoterRanges)]
     promoterRanges <- trim(promoterRanges)
     promoterSeqs <- getSeq(genome, promoterRanges)
     
-    if (namesPromoterSeqs) {
+    if (length(promoterSeqs) > 0) {
       names(promoterSeqs) <- paste0(
         promoterRanges$gene_id, "|",
         seqnames(promoterRanges), ":",
         strand(promoterRanges), "|",
         "Range:", start(promoterRanges), "_", end(promoterRanges),
-        "|U:", input$promoterLength, "bp|D:", input$downstreamLength, "bp"
+        "|U:", upstream, "bp|D:", downstream, "bp"
       )
-    } else {
-      names(promoterSeqs) <- promoterRanges$gene_id
     }
     
     return(promoterSeqs)
   }
   
+  # Handle promoter extraction
   observeEvent(input$submit, {
     output$downloadUI <- renderUI(NULL)
     
@@ -122,22 +163,27 @@ server <- function(input, output, session) {
     
     withProgress(message = "Extracting promoters...", value = 0, {
       incProgress(0.2, detail = "Preparing gene ranges...")
-      geneGR <- athalianaGenes
+      genes <- getSelectedGenes()
+      genome <- getSelectedGenome()
+      
+      req(!is.null(genes) && !is.null(genome))
+      geneGR <- genes
       
       if (processed()) {
         sel <- input$geneTable_rows_selected
         if (!is.null(sel) && length(sel) > 0) {
           ids <- selectedData()$GeneID[sel]
-          geneGR <- athalianaGenes[athalianaGenes$gene_id %in% ids]
+          geneGR <- genes[genes$gene_id %in% ids]
         }
       }
       
       incProgress(0.5, detail = "Fetching sequences...")
-      seqs <- getArabidopsisPromoters(
+      seqs <- getPromoters(
         gr = geneGR,
         upstream = input$promoterLength,
         downstream = input$downstreamLength,
-        genome = athalianaGenome
+        genome = genome,
+        organism = input$organism
       )
       
       incProgress(0.3, detail = "Done.")
@@ -150,6 +196,7 @@ server <- function(input, output, session) {
     })
   })
   
+  # Download handler
   output$downloadBtn <- downloadHandler(
     filename = function() {
       paste0("promoters_", gsub(" ", "_", input$organism), ".fasta")
@@ -161,5 +208,5 @@ server <- function(input, output, session) {
   )
 }
 
-# === Launch ===
+# === Launch App ===
 shinyApp(ui, server)
