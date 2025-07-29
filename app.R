@@ -75,6 +75,8 @@ ui <- fluidPage(
       selectInput("organism", "Choose Organism:", choices = c("Arabidopsis thaliana", "Oryza sativa", "Cicer arietinum")),
       numericInput("promoterLength", "Upstream Length (bp):", value = 1000, min = 100, max = 3000, step = 100),
       numericInput("downstreamLength", "Downstream Length (bp):", value = 0, min = 0, max = 3000, step = 100),
+      checkboxInput("namesPromoterSeqs", "SeqIdAddons", value = FALSE),
+      br(),
       actionButton("submit", "Submit"),
       uiOutput("geneSelector")
     ),
@@ -170,13 +172,19 @@ server <- function(input, output, session) {
     promoterSeqs <- getSeq(genome, promoterRanges)
     
     if (length(promoterSeqs) > 0) {
-      names(promoterSeqs) <- paste0(
-        promoterRanges$gene_id, "|",
-        seqnames(promoterRanges), ":",
-        strand(promoterRanges), "|",
-        "Range:", start(promoterRanges), "_", end(promoterRanges),
-        "|U:", upstream, "bp|D:", downstream, "bp"
-      )
+      if(input$namesPromoterSeqs)
+      {
+        names(promoterSeqs) <- paste0(
+          promoterRanges$gene_id, "|",
+          seqnames(promoterRanges), ":",
+          strand(promoterRanges), "|",
+          "Range:", start(promoterRanges), "_", end(promoterRanges),
+          "|U:", upstream, "bp|D:", downstream, "bp"
+        )
+      }else{
+        names(promoterSeqs) <- promoterRanges$gene_id
+      }
+      
     }
     
     return(promoterSeqs)
